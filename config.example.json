@@ -1,0 +1,10 @@
+{
+  "language": "bilingual",
+  "frequency": "daily",
+  "delivery": {
+    "method": "both",
+    "chatId": "YOUR_TELEGRAM_CHAT_ID",
+    "email": "your@email.com",
+    "useBoth": true
+  }
+}

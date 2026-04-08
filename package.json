@@ -1,0 +1,13 @@
+{
+  "name": "ai-builders-digest",
+  "version": "1.0.0",
+  "description": "AI Builders Digest — scheduled digest generation and delivery via GitHub Actions",
+  "type": "module",
+  "scripts": {
+    "prepare-digest": "node scripts/prepare-digest.js",
+    "deliver": "node scripts/deliver.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.0"
+  }
+}

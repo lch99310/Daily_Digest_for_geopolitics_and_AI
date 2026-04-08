@@ -1,0 +1,225 @@
+#!/usr/bin/env node
+
+// ============================================================================
+// Follow Builders — Prepare Digest
+// ============================================================================
+// Gathers everything the LLM needs to produce a digest.
+// Supports both local config (~/.follow-builders) and environment variables,
+// making it CI-friendly (GitHub Actions).
+//
+// Environment variables (CI override):
+//   FEED_X_URL         — URL to feed-x.json
+//   FEED_PODCASTS_URL  — URL to feed-podcasts.json
+//   FEED_BLOGS_URL     — URL to feed-blogs.json
+//   CONFIG_LANGUAGE           — e.g. "bilingual" | "en" | "zh-CN"
+//   CONFIG_FREQUENCY          — e.g. "daily"
+//   CONFIG_DELIVERY_METHOD    — "telegram" | "email" | "stdout"
+//   CONFIG_DELIVERY_CHAT_ID   — Telegram chat ID
+//   CONFIG_DELIVERY_EMAIL     — Email address
+//   CONFIG_DELIVERY_USE_BOTH  — "true" to send both channels
+//   PROMPT_SUMMARIZE_PODCAST  — inline prompt (overrides file)
+//   PROMPT_SUMMARIZE_TWEETS   — inline prompt (overrides file)
+//   PROMPT_SUMMARIZE_BLOGS    — inline prompt (overrides file)
+//   PROMPT_DIGEST_INTRO       — inline prompt (overrides file)
+//   PROMPT_TRANSLATE          — inline prompt (overrides file)
+//
+// Usage: node prepare-digest.js
+// Output: JSON to stdout
+// ============================================================================
+
+import { readFile } from 'fs/promises';
+import { existsSync } from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
+
+// -- Constants ---------------------------------------------------------------
+
+const USER_DIR = join(homedir(), '.follow-builders');
+const CONFIG_PATH = join(USER_DIR, 'config.json');
+const ENV_PATH = join(USER_DIR, '.env');
+
+// Default feed URLs (zarazhangrui/follow-builders)
+const FEED_X_URL_DEFAULT = 'https://raw.githubusercontent.com/zarazhangrui/follow-builders/main/feed-x.json';
+const FEED_PODCASTS_URL_DEFAULT = 'https://raw.githubusercontent.com/zarazhangrui/follow-builders/main/feed-podcasts.json';
+const FEED_BLOGS_URL_DEFAULT = 'https://raw.githubusercontent.com/zarazhangrui/follow-builders/main/feed-blogs.json';
+
+const PROMPTS_BASE = 'https://raw.githubusercontent.com/zarazhangrui/follow-builders/main/prompts';
+const PROMPT_FILES = [
+  'summarize-podcast.md',
+  'summarize-tweets.md',
+  'summarize-blogs.md',
+  'digest-intro.md',
+  'translate.md'
+];
+
+// -- Fetch helpers -----------------------------------------------------------
+
+async function fetchJSON(url) {
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+async function fetchText(url) {
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  return res.text();
+}
+
+// -- Load env vars from .env if present (CI scenario) -----------------------
+
+async function loadDotEnv() {
+  if (existsSync(ENV_PATH)) {
+    const content = await readFile(ENV_PATH, 'utf-8');
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx === -1) continue;
+      const key = trimmed.slice(0, eqIdx).trim();
+      const val = trimmed.slice(eqIdx + 1).trim();
+      if (key && !(key in process.env)) {
+        process.env[key] = val;
+      }
+    }
+  }
+}
+
+// -- Main --------------------------------------------------------------------
+
+async function main() {
+  await loadDotEnv();
+
+  const errors = [];
+
+  // 1. Resolve config — env vars take priority, then local file
+  let config = {
+    language: 'en',
+    frequency: 'daily',
+    delivery: { method: 'stdout' }
+  };
+
+  // Layer 1: local config file
+  if (existsSync(CONFIG_PATH)) {
+    try {
+      config = JSON.parse(await readFile(CONFIG_PATH, 'utf-8'));
+    } catch (err) {
+      errors.push(`Could not read config: ${err.message}`);
+    }
+  }
+
+  // Layer 2: environment variables (CI override)
+  const envConfig = {
+    language:          process.env.CONFIG_LANGUAGE,
+    frequency:         process.env.CONFIG_FREQUENCY,
+    delivery: {
+      method:          process.env.CONFIG_DELIVERY_METHOD,
+      chatId:          process.env.CONFIG_DELIVERY_CHAT_ID,
+      email:           process.env.CONFIG_DELIVERY_EMAIL,
+      useBoth:         process.env.CONFIG_DELIVERY_USE_BOTH === 'true'
+    }
+  };
+
+  if (envConfig.language)           config.language  = envConfig.language;
+  if (envConfig.frequency)           config.frequency  = envConfig.frequency;
+  if (envConfig.delivery.method)    config.delivery.method   = envConfig.delivery.method;
+  if (envConfig.delivery.chatId)    config.delivery.chatId   = envConfig.delivery.chatId;
+  if (envConfig.delivery.email)     config.delivery.email    = envConfig.delivery.email;
+  if (envConfig.delivery.useBoth !== undefined) {
+    config.delivery.useBoth = envConfig.delivery.useBoth;
+  }
+
+  // 2. Feed URLs — env vars override defaults
+  const feedXUrl        = process.env.FEED_X_URL        || FEED_X_URL_DEFAULT;
+  const feedPodcastsUrl = process.env.FEED_PODCASTS_URL || FEED_PODCASTS_URL_DEFAULT;
+  const feedBlogsUrl    = process.env.FEED_BLOGS_URL    || FEED_BLOGS_URL_DEFAULT;
+
+  const [feedX, feedPodcasts, feedBlogs] = await Promise.all([
+    fetchJSON(feedXUrl),
+    fetchJSON(feedPodcastsUrl),
+    fetchJSON(feedBlogsUrl)
+  ]);
+
+  if (!feedX)        errors.push('Could not fetch tweet feed');
+  if (!feedPodcasts) errors.push('Could not fetch podcast feed');
+  if (!feedBlogs)    errors.push('Could not fetch blog feed');
+
+  // 3. Load prompts — priority: env var > user custom > remote > local default
+  const promptKeys = [
+    'summarize_podcast', 'summarize_tweets', 'summarize_blogs',
+    'digest_intro', 'translate'
+  ];
+
+  const prompts = {};
+  for (const filename of PROMPT_FILES) {
+    const key = filename.replace('.md', '').replace(/-/g, '_');
+    const envKey = `PROMPT_${key.toUpperCase()}`;
+
+    // Priority 1: environment variable (CI / GitHub Actions)
+    if (process.env[envKey]) {
+      prompts[key] = process.env[envKey];
+      continue;
+    }
+
+    // Priority 2: user custom at ~/.follow-builders/prompts/<file>
+    const userPath = join(USER_DIR, 'prompts', filename);
+    if (existsSync(userPath)) {
+      prompts[key] = await readFile(userPath, 'utf-8');
+      continue;
+    }
+
+    // Priority 3: latest from GitHub (central updates)
+    const remote = await fetchText(`${PROMPTS_BASE}/${filename}`);
+    if (remote) {
+      prompts[key] = remote;
+      continue;
+    }
+
+    // Priority 4: local copy shipped with the skill
+    const scriptDir = decodeURIComponent(new URL('.', import.meta.url).pathname);
+    const localPath = join(scriptDir, '..', 'prompts', filename);
+    if (existsSync(localPath)) {
+      prompts[key] = await readFile(localPath, 'utf-8');
+    } else {
+      errors.push(`Could not load prompt: ${filename}`);
+    }
+  }
+
+  // 4. Build output
+  const output = {
+    status: 'ok',
+    generatedAt: new Date().toISOString(),
+
+    config: {
+      language: config.language || 'en',
+      frequency: config.frequency || 'daily',
+      delivery: config.delivery || { method: 'stdout' }
+    },
+
+    podcasts: feedPodcasts?.podcasts || [],
+    x: feedX?.x || [],
+    blogs: feedBlogs?.blogs || [],
+
+    stats: {
+      podcastEpisodes: feedPodcasts?.podcasts?.length || 0,
+      xBuilders: feedX?.x?.length || 0,
+      totalTweets: (feedX?.x || []).reduce((sum, a) => sum + a.tweets.length, 0),
+      blogPosts: feedBlogs?.blogs?.length || 0,
+      feedGeneratedAt: feedX?.generatedAt || feedPodcasts?.generatedAt || feedBlogs?.generatedAt || null
+    },
+
+    prompts,
+
+    errors: errors.length > 0 ? errors : undefined
+  };
+
+  console.log(JSON.stringify(output, null, 2));
+}
+
+main().catch(err => {
+  console.error(JSON.stringify({
+    status: 'error',
+    message: err.message
+  }));
+  process.exit(1);
+});
