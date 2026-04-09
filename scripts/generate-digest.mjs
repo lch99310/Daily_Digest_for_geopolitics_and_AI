@@ -49,8 +49,14 @@ function buildPrompt(data) {
 
   const buildersSection = builders.slice(0, 8).map((b, i) => {
     const topTweet = (b.tweets || [])[0] || {};
-    const text = (topTweet.text || b.bio || '').replace(/\n/g, ' ').trim().slice(0, 280);
-    return `${i + 1}. **@${b.handle}**${b.name ? ` (${b.name})` : ''}\n   ${text}`;
+    // Strip t.co shortened links from display text — they're opaque without expansion
+    const text = (topTweet.text || b.bio || '')
+      .replace(/https:\/\/t\.co\/\S+/g, '')
+      .replace(/\n/g, ' ')
+      .trim()
+      .slice(0, 280);
+    const url = topTweet.url || `https://x.com/${b.handle}`;
+    return `${i + 1}. **@${b.handle}**${b.name ? ` (${b.name})` : ''}\n   ${text}\n   URL: ${url}`;
   }).join('\n\n');
 
   const blogsSection = blogs.slice(0, 3).map((b, i) =>
@@ -77,6 +83,8 @@ ${blogsSection}
 - Write each item ONCE — no bilingual repetition, no parallel paragraphs
 - Language: Simplified Chinese (use English only for proper nouns/model names)
 - Tone: concise, insightful — like a smart friend's WeChat message
+- Each card summary: maximum 150 Chinese characters
+- URLs: copy the exact URL from the source data above — do NOT invent, shorten, or modify any URL
 
 ## Output Format (strict — nothing before or after)
 
@@ -85,8 +93,8 @@ ${blogsSection}
 [For each item use exactly this card layout:]
 
 {section-emoji} **{Title or @handle}**
-{1–2 sentences, max 80 Chinese characters, no repetition}
-🔗 {url if available}
+{1–2 sentences, max 150 Chinese characters}
+🔗 {exact URL from source data}
 
 [blank line between cards]
 
