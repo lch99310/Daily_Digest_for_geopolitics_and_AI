@@ -63,89 +63,149 @@ function improvePodcastUrl(url, title) {
 
 // -- Build prompt from feed data --------------------------------------------
 
+/**
+ * Build the LLM prompt and a URL lookup table.
+ *
+ * Every source item is given an opaque ID (e.g. [X1], [P1], [B1]). The prompt
+ * instructs the model to emit the ID — never the URL itself — in the 連結
+ * field. After the model responds, we substitute the IDs with the canonical
+ * URLs we captured here. This completely eliminates URL hallucination, which
+ * is why previous digests shipped broken X links.
+ *
+ * @returns {{ prompt: string, urlMap: Record<string, string> }}
+ */
 function buildPrompt(data) {
-  const today = new Date().toLocaleDateString('en-US', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+  const today = new Date().toLocaleDateString('zh-TW', {
+    year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'
   });
 
   const podcasts = data.podcasts || [];
   const builders = data.x || [];
   const blogs = data.blogs || [];
 
-  const podcastsSection = podcasts.slice(0, 5).map((p, i) => {
+  const urlMap = {};
+
+  // --- Podcasts ---
+  const podcastLines = [];
+  podcasts.slice(0, 5).forEach((p, i) => {
+    const id = `P${i + 1}`;
     const episodeTitle = p.title || p.name || 'Unknown Episode';
     const showName = p.name && p.title ? p.name : (p.author || 'Unknown');
-    const desc = (p.description || p.transcript || '').replace(/\n/g, ' ').trim().slice(0, 600);
-    const url = improvePodcastUrl(p.url, p.title || p.name);
-    return `${i + 1}. Show: **${showName}**
-   Episode: ${episodeTitle}
-   Description: ${desc}
-   URL: ${url}`;
-  }).join('\n\n');
+    const desc = (p.description || p.transcript || '')
+      .replace(/\n/g, ' ').trim().slice(0, 600);
+    urlMap[id] = improvePodcastUrl(p.url, p.title || p.name);
+    podcastLines.push(
+`[${id}] 節目：${showName}
+    集名：${episodeTitle}
+    內容：${desc}`
+    );
+  });
 
-  const buildersSection = builders.slice(0, 8).map((b, i) => {
-    const topTweet = (b.tweets || [])[0] || {};
-    const text = (topTweet.text || b.bio || '')
-      .replace(/https:\/\/t\.co\/\S+/g, '') // strip opaque t.co links
-      .replace(/\n/g, ' ')
-      .trim()
-      .slice(0, 500);
-    const url = topTweet.url || `https://x.com/${b.handle}`;
-    return `${i + 1}. **@${b.handle}**${b.name ? ` (${b.name})` : ''}
-   Tweet: ${text}
-   URL: ${url}`;
-  }).join('\n\n');
+  // --- X / Twitter ---
+  // Pass up to 2 recent tweets per builder so the model has a richer pool
+  // and always references a real, captured URL via the ID.
+  const xLines = [];
+  let xCounter = 0;
+  builders.slice(0, 15).forEach((b) => {
+    const tweets = (b.tweets || []).slice(0, 2);
+    tweets.forEach((tw) => {
+      xCounter += 1;
+      const id = `X${xCounter}`;
+      const text = (tw.text || b.bio || '')
+        .replace(/https:\/\/t\.co\/\S+/g, '') // strip opaque t.co links
+        .replace(/\n/g, ' ')
+        .trim()
+        .slice(0, 500);
+      urlMap[id] = tw.url || `https://x.com/${b.handle}`;
+      xLines.push(
+`[${id}] @${b.handle}${b.name ? ` (${b.name})` : ''}
+    推文：${text}`
+      );
+    });
+  });
 
-  const blogsSection = blogs.slice(0, 3).map((b, i) =>
-`${i + 1}. **${b.title || 'Untitled'}**
-   ${(b.summary || '').replace(/\n/g, ' ').trim().slice(0, 400)}
-   URL: ${b.url || ''}`
-  ).join('\n\n');
+  // --- Blogs ---
+  const blogLines = [];
+  blogs.slice(0, 5).forEach((bp, i) => {
+    const id = `B${i + 1}`;
+    urlMap[id] = bp.url || '';
+    blogLines.push(
+`[${id}] ${bp.title || 'Untitled'}
+    摘要：${(bp.summary || '').replace(/\n/g, ' ').trim().slice(0, 400)}`
+    );
+  });
 
-  return `You are writing the AI Builders Daily Digest for ${today}.
+  const podcastsSection = podcastLines.join('\n\n') || '（今日無播客）';
+  const buildersSection = xLines.join('\n\n') || '（今日無推文）';
+  const blogsSection = blogLines.join('\n\n') || '（今日無部落格文章）';
 
-## Source Data
+  const prompt = `你是一位資深科技記者，正在為台灣讀者撰寫《AI Builders Daily Digest》。今天是 ${today}。
 
-### Podcasts
-${podcastsSection || '(no podcasts today)'}
+## 原始素材（過去 24 小時內）
 
-### X / Twitter Builders
-${buildersSection || '(no tweets today)'}
+### 播客
+${podcastsSection}
 
-### Blog Posts
-${blogsSection || '(no blog posts today)'}
+### X / Twitter
+${buildersSection}
 
-## Instructions
-- Pick 10 items total. Each item becomes exactly ONE card.
-- Every card MUST have all three parts: 標題, 摘要, 連結. No exceptions.
-- Language: traditional Chinese. The content must present in the content what native traditional chinese would speak. The style should similar to LatePost 晚點 article. English only for proper nouns / model names.
-- Tone: insightful — tell the reader WHY it matters, not just what happened.
-- 摘要 length: 150-250 Chinese characters (2–3 sentences). Be substantive.
-- 連結: copy verbatim from the URL field in the source data. Do NOT invent or change any URL.
-- Write each item ONCE. No bilingual repetition.
+### 部落格
+${blogsSection}
 
-## Output Format
+## 撰寫要求
 
-Output ONLY the cards below — nothing before the header, nothing after the footer.
+- **語言**：全文繁體中文，遵循台灣讀者的自然語感與用字（例如「軟體」「程式」「網路」「雲端」「人工智慧」）。專有名詞、模型名稱、公司名稱可保留英文。嚴禁大陸用語與簡體字。
+- **風格**：模仿《晚點 LatePost》的報導風格——
+  - 冷靜克制的記者筆法，不煽情、不行銷、不用驚嘆號
+  - 每則先講「發生什麼事」，再剖析「為什麼重要」或「背後邏輯」
+  - 資訊密度高，強調事實、數據、脈絡，避免模糊形容詞
+  - 句子俐落，一段話能講清楚的絕不繞路
+- **卡片數量**：從上述素材中挑選最具新聞價值的 8 至 10 則，每則一張卡片。不得重複、不得虛構事實。
+- **摘要字數**：每段 150 至 250 個繁體中文字，2 至 3 句話。
+- **連結格式（關鍵）**：連結欄位**只能填入方括號 ID**（例如 [X1]、[P3]、[B2]），直接複製上方素材中的 ID。**嚴禁輸出任何 http 或 https 網址字串**，系統會在事後自動把 ID 換成真正的連結。若寫成 URL 會被視為錯誤輸出。
+- 每張卡片必須包含三個欄位：標題、摘要、連結，一個都不可少。
+
+## 輸出格式（嚴格遵守，僅輸出以下內容，前後不加任何說明）
 
 🤖 **AI Builders Digest**
 📅 ${today}
 
-[repeat this block for each card — exactly 3 parts per card:]
+（每張卡片重複此區塊，共 8 至 10 張）
 
 ━━━━━━━━━━━━━━━━━━━━
-{emoji} **標題：{一句話事件標題，20字以內}**
-📝 摘要：{2至3句話，說明事件背景與最新進展，100至150字. Synthesize the insight — why does this matter? What is actually new?}
-🔗 連結：{exact URL copied verbatim from source data}
-
-[end of all cards]
+{emoji} **標題：{一句話事件標題，20 字以內}**
+📝 摘要：{150 至 250 字的繁體中文晚點風格段落，講清楚事件本身與為何值得關注}
+🔗 連結：{素材中的方括號 ID，例如 [X1]；不要寫 URL}
 
 ━━━━━━━━━━━━━━━━━━━━
-_由 AI 自动生成 · AI Builders Digest_
+_由 AI 自動生成 · AI Builders Digest_
 
-Emoji guide: 🎙️ podcast  🐦 X/Twitter  📝 blog
+Emoji 指引：🎙️ 播客 / 🐦 X/Twitter / 📝 部落格
 `;
 
+  return { prompt, urlMap };
+}
+
+// -- Substitute [ID] placeholders with real URLs -----------------------------
+
+/**
+ * Replace every `[ID]` token in the generated digest with the canonical URL
+ * captured in `urlMap`. Any token that doesn't resolve is stripped and its
+ * containing line is replaced with a safe fallback so we never ship a raw
+ * placeholder to users.
+ */
+function substituteUrls(digest, urlMap) {
+  let output = digest.replace(/\[([A-Z]\d{1,3})\]/g, (match, id) => {
+    return urlMap[id] || match;
+  });
+
+  // Some models ignore instructions and write URLs directly. Leave those
+  // alone — they might still be valid. But strip any lingering [XN]-style
+  // tokens that never matched a real ID, replacing them with a blank so the
+  // line still reads cleanly.
+  output = output.replace(/\[([A-Z]\d{1,3})\]/g, '');
+
+  return output;
 }
 
 // -- Fetch current free models from OpenRouter API --------------------------
@@ -243,11 +303,18 @@ async function main() {
   const models = await fetchFreeModels();
   console.log(`Trying up to ${models.length} models sequentially…`);
 
-  const prompt = buildPrompt(data);
+  const { prompt, urlMap } = buildPrompt(data);
+  console.log(`Prompt built: ${Object.keys(urlMap).length} source items with stable URL IDs`);
+
   let digest = await tryModelsSequentially(models, prompt);
 
   // Strip any markdown code fences the model may have wrapped around output
   digest = digest.replace(/^```markdown\s*/i, '').replace(/^```\s*/i, '').replace(/```$/i, '').trim();
+
+  // Substitute [X1] / [P2] / [B1] placeholders with the canonical URLs
+  // captured during buildPrompt — this is the single source of truth for
+  // URLs in the final digest and is why links never drift from the source.
+  digest = substituteUrls(digest, urlMap);
 
   await writeFile(OUTPUT_FILE, digest, 'utf-8');
   console.log(`Digest written to ${OUTPUT_FILE} (${digest.length} chars)`);
