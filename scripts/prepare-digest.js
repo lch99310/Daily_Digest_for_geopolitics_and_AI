@@ -144,6 +144,31 @@ async function main() {
   if (!feedPodcasts) errors.push('Could not fetch podcast feed');
   if (!feedBlogs)    errors.push('Could not fetch blog feed');
 
+  // 2a. Filter every source to the last 24 hours — the feeds ship much older
+  // items (podcasts use a 14-day lookback, blogs use 72h), so we re-filter
+  // strictly here to guarantee the digest only contains items from the past
+  // 24 hours relative to the time this script runs.
+  const LOOKBACK_HOURS = 24;
+  const cutoff = Date.now() - LOOKBACK_HOURS * 60 * 60 * 1000;
+  const isRecent = (dateStr) => {
+    if (!dateStr) return false;
+    const t = new Date(dateStr).getTime();
+    return Number.isFinite(t) && t >= cutoff;
+  };
+
+  const recentPodcasts = (feedPodcasts?.podcasts || [])
+    .filter(p => isRecent(p.publishedAt || p.pubDate || p.date));
+
+  const recentX = (feedX?.x || [])
+    .map(b => ({
+      ...b,
+      tweets: (b.tweets || []).filter(t => isRecent(t.createdAt || t.created_at || t.date))
+    }))
+    .filter(b => b.tweets.length > 0);
+
+  const recentBlogs = (feedBlogs?.blogs || [])
+    .filter(b => isRecent(b.publishedAt || b.pubDate || b.date || b.published));
+
   // 3. Load prompts — priority: env var > user custom > remote > local default
   const promptKeys = [
     'summarize_podcast', 'summarize_tweets', 'summarize_blogs',
@@ -196,15 +221,17 @@ async function main() {
       delivery: config.delivery || { method: 'stdout' }
     },
 
-    podcasts: feedPodcasts?.podcasts || [],
-    x: feedX?.x || [],
-    blogs: feedBlogs?.blogs || [],
+    lookbackHours: LOOKBACK_HOURS,
+
+    podcasts: recentPodcasts,
+    x: recentX,
+    blogs: recentBlogs,
 
     stats: {
-      podcastEpisodes: feedPodcasts?.podcasts?.length || 0,
-      xBuilders: feedX?.x?.length || 0,
-      totalTweets: (feedX?.x || []).reduce((sum, a) => sum + a.tweets.length, 0),
-      blogPosts: feedBlogs?.blogs?.length || 0,
+      podcastEpisodes: recentPodcasts.length,
+      xBuilders: recentX.length,
+      totalTweets: recentX.reduce((sum, a) => sum + a.tweets.length, 0),
+      blogPosts: recentBlogs.length,
       feedGeneratedAt: feedX?.generatedAt || feedPodcasts?.generatedAt || feedBlogs?.generatedAt || null
     },
 

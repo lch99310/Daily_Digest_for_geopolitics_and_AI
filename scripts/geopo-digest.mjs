@@ -41,6 +41,8 @@ function parseRSSItems(xml) {
   const titleRe = /<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/;
   const descRe  = /<(?:description|summary|content(?::[^>]*)?)>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/(?:description|summary|content(?::[^>]*)?)>/;
   const linkRe  = /<link(?:\s[^>]*)?>([^<\s]+)<\/link>|<link[^>]+href="([^"]+)"/;
+  // RSS 2.0 uses <pubDate>, Atom uses <published>/<updated>, Dublin Core uses <dc:date>.
+  const dateRe  = /<(pubDate|published|updated|dc:date)>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/\1>/;
 
   let m;
   while ((m = itemRe.exec(xml)) !== null) {
@@ -49,7 +51,9 @@ function parseRSSItems(xml) {
     const desc  = (descRe.exec(block)?.[1]  || '').replace(/<[^>]+>/g, '').replace(/&[a-z]+;/gi, ' ').trim().slice(0, 250);
     const lm    = linkRe.exec(block);
     const link  = (lm?.[1] || lm?.[2] || '').trim();
-    if (title && title.length > 8) items.push({ title, desc, link });
+    const dm    = dateRe.exec(block);
+    const pubDate = (dm?.[2] || '').trim();
+    if (title && title.length > 8) items.push({ title, desc, link, pubDate });
   }
   return items;
 }
@@ -62,7 +66,9 @@ async function fetchFeed({ name, url }) {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const xml   = await res.text();
-    const items = parseRSSItems(xml);
+    // Tag each item with its originating feed so we can (a) filter by source
+    // and (b) show 來源 on every card so readers can judge credibility.
+    const items = parseRSSItems(xml).map(it => ({ ...it, source: name }));
     console.log(`  ${name}: ${items.length} items`);
     return items;
   } catch (err) {
@@ -78,64 +84,80 @@ function buildPrompt(articles) {
     year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
   });
 
+  // Enumerate the distinct source names so the model can only pick from
+  // real media we actually pulled — prevents hallucinated sources.
+  const sourceSet = [...new Set(articles.map(a => a.source).filter(Boolean))];
+  const sourceList = sourceSet.join('、');
+
   const articleList = articles
     .slice(0, 40)
-    .map((a, i) => `${i + 1}. ${a.title}${a.desc ? '\n   ' + a.desc : ''}`)
+    .map((a, i) => {
+      const src = a.source ? ` [來源：${a.source}]` : '';
+      return `${i + 1}.${src} ${a.title}${a.desc ? '\n   ' + a.desc : ''}`;
+    })
     .join('\n\n');
 
-  return `你是一位專業的地緣政治分析師，正在為台灣的專業投資人撰寫每日地緣政治風險簡報。今天是 ${today}。
+  return `你是一位資深的地緣政治記者，正在為台灣讀者撰寫每日地緣政治風險簡報。今天是 ${today}。
 
-## 今日國際新聞（來自 Reuters、BBC、Al Jazeera 等主流媒體）
+## 過去 24 小時國際新聞（已標註原始媒體來源）
 
 ${articleList}
 
-## 你的任務
+## 撰寫要求
 
-根據上述新聞及你對當前地緣政治局勢的深度掌握，撰寫一份結構嚴謹的風險簡報。
+- **語言**：全文繁體中文，貼近台灣讀者的自然語感，避免大陸式用語（例如用「網路」而非「网络」、「軟體」而非「软件」、「資訊」而非「信息」）。專有名詞、人名、地名可保留英文或通用譯名。
+- **風格**：模仿《晚點 LatePost》的報導風格——
+  - 冷靜克制的記者筆法，不煽情、不用驚嘆號
+  - 每則先講「發生什麼事」，再剖析「為什麼重要」
+  - 強調事實、脈絡與連動關係，拒絕模糊形容詞
+  - 句子俐落、資訊密度高
+- **來源欄位（重要）**：每張卡片的「來源」欄位**只能**從下列清單中挑選，且必須與上方素材中標註的來源一致：${sourceList}。如需綜合多個來源，以頓號分隔（例如「Reuters、BBC」）。不得自行編造來源。
+- **資料取材**：盡量以上方提供的新聞素材為主；若需補充背景脈絡，可帶入你對近期局勢的掌握，但當前卡片仍須對應到真實的新聞事件。
 
-重要規則：
-- 語言：**繁體中文**，風格貼近台灣母語使用者的自然書寫，避免大陸式用語（例如：用「網路」而非「网络」，用「軟體」而非「软件」）。
-- 嚴格按照以下格式輸出，每個標籤逐字複製，不得增減任何欄位。
-- 若新聞中找不到足夠的中國周邊事件，可結合你對近期局勢的背景知識補充，但須說明。
-
-## 輸出格式（完整輸出，不省略任何部分）
+## 輸出格式（嚴格遵守，逐字照抄標籤，每張卡片 4 個欄位缺一不可）
 
 🔴 中國周邊高風險地緣政治事件 (Top 3)
 
 ━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20字以內}
-摘要：{2至3句話，說明事件背景與最新進展，100至150字}
-風險：{說明對區域安全或全球秩序的具體威脅，80至120字}
+標題：{一句話事件標題，20 字以內}
+摘要：{2 至 3 句話，說明事件背景與最新進展，100 至 150 字，晚點風格}
+風險：{說明對區域安全或全球秩序的具體威脅，80 至 120 字}
+來源：{從上方清單挑選的媒體名稱，供讀者自行判斷可信度}
 
 ━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20字以內}
-摘要：{2至3句話，100至150字}
-風險：{80至120字}
+標題：{一句話事件標題，20 字以內}
+摘要：{2 至 3 句話，100 至 150 字}
+風險：{80 至 120 字}
+來源：{媒體名稱}
 
 ━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20字以內}
-摘要：{2至3句話，100至150字}
-風險：{80至120字}
+標題：{一句話事件標題，20 字以內}
+摘要：{2 至 3 句話，100 至 150 字}
+風險：{80 至 120 字}
+來源：{媒體名稱}
 
 🌍 全球其他重大地緣政治事件 (Top 3)
 
 ━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20字以內}
-摘要：{2至3句話，100至150字}
-風險：{80至120字}
+標題：{一句話事件標題，20 字以內}
+摘要：{2 至 3 句話，100 至 150 字}
+風險：{80 至 120 字}
+來源：{媒體名稱}
 
 ━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20字以內}
-摘要：{2至3句話，100至150字}
-風險：{80至120字}
+標題：{一句話事件標題，20 字以內}
+摘要：{2 至 3 句話，100 至 150 字}
+風險：{80 至 120 字}
+來源：{媒體名稱}
 
 ━━━━━━━━━━━━━━━━━━━━
-標題：{一句話事件標題，20字以內}
-摘要：{2至3句話，100至150字}
-風險：{80至120字}
+標題：{一句話事件標題，20 字以內}
+摘要：{2 至 3 句話，100 至 150 字}
+風險：{80 至 120 字}
+來源：{媒體名稱}
 
 💡 總結與黃金市場影響評估
-快速總結：{2至3句話，綜合分析今日整體地緣政治態勢，點出最關鍵的連動風險}
+快速總結：{2 至 3 句話，綜合分析今日整體地緣政治態勢，點出最關鍵的連動風險}
 
 對黃金的影響：{從以下選一：極度利多（強烈看漲）／利多（看漲）／中性／利空（看跌）／極度利空（強烈看跌）}
 • {看多或看空理由一，帶具體事件}
@@ -282,14 +304,31 @@ async function main() {
   });
 
   console.log(`Collected ${unique.length} unique articles`);
-  if (unique.length < 5) {
-    throw new Error(`Only ${unique.length} articles fetched — not enough to generate briefing`);
+
+  // Hard 24-hour window: every article fed into the briefing must have been
+  // published within the last 24 hours relative to this run. Items without a
+  // parseable pubDate are dropped — we can't prove freshness, so we exclude
+  // them rather than risk shipping stale news.
+  const LOOKBACK_HOURS = 24;
+  const cutoff = Date.now() - LOOKBACK_HOURS * 60 * 60 * 1000;
+  const fresh = unique.filter(a => {
+    if (!a.pubDate) return false;
+    const t = new Date(a.pubDate).getTime();
+    return Number.isFinite(t) && t >= cutoff;
+  });
+  console.log(`Within last ${LOOKBACK_HOURS}h: ${fresh.length} articles`);
+
+  if (fresh.length < 3) {
+    throw new Error(`Only ${fresh.length} articles within the last ${LOOKBACK_HOURS}h — not enough to generate briefing`);
   }
+
+  // Sort newest first so the most recent items land at the top of the prompt
+  fresh.sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
 
   const models = await fetchFreeModels();
   console.log(`Trying up to ${models.length} models sequentially...`);
 
-  const prompt   = buildPrompt(unique);
+  const prompt   = buildPrompt(fresh);
   let   briefing = await tryModelsSequentially(models, prompt);
 
   // Strip code fences if model wrapped the output
