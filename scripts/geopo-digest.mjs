@@ -29,11 +29,11 @@ const NEWS_FEEDS = [
   { name: 'Reuters World',      url: 'https://feeds.reuters.com/reuters/worldNews' },
   { name: 'BBC World',          url: 'https://feeds.bbci.co.uk/news/world/rss.xml' },
   { name: 'Al Jazeera',         url: 'https://www.aljazeera.com/xml/rss/all.xml' },
-  { name: 'Financial Times',    url: 'https://www.ft.com/world?format=rss' },
-  { name: 'SCMP',               url: 'https://www.scmp.com/rss/91/feed' },
-  { name: 'WSJ',                url: 'https://feeds.a.dj.com/rss/RSSWorldNews.xml' },
+  { name: 'Financial Times',    url: 'https://news.google.com/rss/search?q=when:24h+allinurl:ft.com&hl=en-US&gl=US&ceid=US:en' },
+  { name: 'SCMP',               url: 'https://news.google.com/rss/search?q=when:24h+allinurl:scmp.com&hl=en-US&gl=US&ceid=US:en' },
+  { name: 'WSJ',                url: 'https://news.google.com/rss/search?q=when:24h+allinurl:wsj.com&hl=en-US&gl=US&ceid=US:en' },
   { name: 'Bloomberg',          url: 'https://news.google.com/rss/search?q=when:24h+allinurl:bloomberg.com&hl=en-US&gl=US&ceid=US:en' },
-  { name: 'Nikkei Asia',        url: 'https://asia.nikkei.com/rss' },
+  { name: 'Nikkei Asia',        url: 'https://news.google.com/rss/search?q=when:24h+allinurl:asia.nikkei.com&hl=en-US&gl=US&ceid=US:en' },
 ];
 
 // -- RSS parser (no npm) -----------------------------------------------------
