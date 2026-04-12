@@ -265,7 +265,7 @@ async function fetchFreeModels() {
 async function callOpenRouter(model, prompt) {
   try {
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      signal: AbortSignal.timeout(60_000),
+      signal: AbortSignal.timeout(120_000),
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -293,7 +293,7 @@ async function callOpenRouter(model, prompt) {
     }
     return content;
   } catch (err) {
-    if (err.name === 'TimeoutError') throw new Error('Timed out after 60s');
+    if (err.name === 'TimeoutError') throw new Error('Timed out after 120s');
     throw err;
   }
 }

@@ -240,7 +240,7 @@ async function fetchFreeModels() {
 async function callModel(model, prompt) {
   try {
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      signal: AbortSignal.timeout(60_000),
+      signal: AbortSignal.timeout(120_000),
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -266,14 +266,14 @@ async function callModel(model, prompt) {
     }
     return content;
   } catch (err) {
-    if (err.name === 'TimeoutError') throw new Error('Timed out after 60s');
+    if (err.name === 'TimeoutError') throw new Error('Timed out after 120s');
     throw err;
   }
 }
 
 // Try models one at a time — stop at the first success.
 // Sequential fallback costs only 1 request on a good day, vs N for parallel racing.
-// Each model call is individually rate-limited to 60s so the workflow still finishes
+// Each model call is individually rate-limited to 120s so the workflow still finishes
 // within the 20-min timeout even if the first few models time out.
 async function tryModelsSequentially(models, prompt) {
   for (const model of models) {
