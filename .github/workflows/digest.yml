@@ -58,6 +58,7 @@ jobs:
       - name: Generate digest with OpenRouter
         env:
           OPENROUTER_FREE_API_KEY: ${{ secrets.OPENROUTER_FREE_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           GITHUB_WORKSPACE: ${{ github.workspace }}
           DELIVERY_OVERRIDE: ${{ inputs.delivery_override || 'both' }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
