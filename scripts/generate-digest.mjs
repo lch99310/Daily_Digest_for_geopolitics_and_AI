@@ -15,6 +15,7 @@ const WORKSPACE = process.env.GITHUB_WORKSPACE || resolve(__dirname, '..');
 const PREPARE_JSON = `${WORKSPACE}/scripts/prepare-output.json`;
 const OUTPUT_FILE = '/tmp/follow-builders-digest.md';
 const OPENROUTER_FREE_API_KEY = process.env.OPENROUTER_FREE_API_KEY || '';
+const DEEPSEEK_API_KEY       = process.env.DEEPSEEK_API_KEY || '';
 
 // Known-working free models (confirmed via 429 = endpoint exists).
 // Used as fallback if the live model-list API fails.
@@ -373,6 +374,40 @@ async function tryModelsSequentially(models, prompt) {
   throw new Error('All OpenRouter models failed');
 }
 
+// -- DeepSeek paid fallback ---------------------------------------------------
+// Only called when ALL free OpenRouter models fail. DeepSeek-chat is ~0.05 CNY/day.
+
+async function callDeepSeek(prompt) {
+  console.log('Falling back to DeepSeek (paid)...');
+  const response = await fetch('https://api.deepseek.com/chat/completions', {
+    signal: AbortSignal.timeout(120_000),
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      max_tokens: MAX_TOKENS,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`DeepSeek ${response.status}: ${err}`);
+  }
+
+  const result = await response.json();
+  const content = (result.choices?.[0]?.message?.content || '').trim();
+  if (!content) throw new Error('DeepSeek returned empty response');
+  if (content.length < MIN_CONTENT_LENGTH) {
+    throw new Error(`DeepSeek response too short (${content.length} chars, need ≥${MIN_CONTENT_LENGTH})`);
+  }
+  console.log('✓ Success: DeepSeek (paid fallback)');
+  return content;
+}
+
 // -- Main --------------------------------------------------------------------
 
 async function main() {
@@ -387,7 +422,14 @@ async function main() {
   const { prompt, urlMap } = buildPrompt(data);
   console.log(`Prompt built: ${Object.keys(urlMap).length} source items with stable URL IDs`);
 
-  let digest = await tryModelsSequentially(models, prompt);
+  let digest;
+  try {
+    digest = await tryModelsSequentially(models, prompt);
+  } catch {
+    // All free models failed — try DeepSeek as paid fallback
+    if (!DEEPSEEK_API_KEY) throw new Error('All free models failed and DEEPSEEK_API_KEY not configured');
+    digest = await callDeepSeek(prompt);
+  }
 
   // Strip any markdown code fences the model may have wrapped around output
   digest = digest.replace(/^```markdown\s*/i, '').replace(/^```\s*/i, '').replace(/```$/i, '').trim();

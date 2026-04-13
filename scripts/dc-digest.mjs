@@ -8,6 +8,7 @@
 import { writeFile } from 'fs/promises';
 
 const OPENROUTER_FREE_API_KEY = process.env.OPENROUTER_FREE_API_KEY || '';
+const DEEPSEEK_API_KEY       = process.env.DEEPSEEK_API_KEY || '';
 const BOT_TOKEN          = process.env.DC_TELEGRAM_BOT_TOKEN || '';
 const CHAT_ID            = process.env.DC_TELEGRAM_CHAT_ID || '';
 
@@ -332,6 +333,40 @@ async function tryModelsSequentially(models, prompt) {
   throw new Error('All OpenRouter models failed');
 }
 
+// -- DeepSeek paid fallback ---------------------------------------------------
+// Only called when ALL free OpenRouter models fail. DeepSeek-chat is ~0.05 CNY/day.
+
+async function callDeepSeek(prompt) {
+  console.log('Falling back to DeepSeek (paid)...');
+  const response = await fetch('https://api.deepseek.com/chat/completions', {
+    signal: AbortSignal.timeout(120_000),
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      max_tokens: MAX_TOKENS,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`DeepSeek ${response.status}: ${err}`);
+  }
+
+  const result = await response.json();
+  const content = (result.choices?.[0]?.message?.content || '').trim();
+  if (!content) throw new Error('DeepSeek returned empty response');
+  if (content.length < MIN_CONTENT_LENGTH) {
+    throw new Error(`DeepSeek response too short (${content.length} chars, need ≥${MIN_CONTENT_LENGTH})`);
+  }
+  console.log('✓ Success: DeepSeek (paid fallback)');
+  return content;
+}
+
 // -- Telegram delivery -------------------------------------------------------
 
 async function sendTelegram(text) {
@@ -401,7 +436,14 @@ async function main() {
   console.log(`Trying up to ${models.length} models sequentially...`);
 
   const prompt   = buildPrompt(fresh);
-  let   briefing = await tryModelsSequentially(models, prompt);
+  let   briefing;
+  try {
+    briefing = await tryModelsSequentially(models, prompt);
+  } catch {
+    // All free models failed — try DeepSeek as paid fallback
+    if (!DEEPSEEK_API_KEY) throw new Error('All free models failed and DEEPSEEK_API_KEY not configured');
+    briefing = await callDeepSeek(prompt);
+  }
 
   // Strip code fences if model wrapped the output
   briefing = briefing.replace(/^```[\w]*\s*/i, '').replace(/```$/i, '').trim();
