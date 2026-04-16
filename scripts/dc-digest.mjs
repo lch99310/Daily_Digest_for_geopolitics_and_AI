@@ -46,6 +46,12 @@ const NEWS_FEEDS = [
   { name: 'Goodman Group',      url: 'https://news.google.com/rss/search?q=when:24h+%22Goodman+Group%22+%22data+centre%22&hl=en-AU&gl=AU&ceid=AU:en' },
   { name: 'Macquarie Tech',     url: 'https://news.google.com/rss/search?q=when:24h+%22Macquarie+Technology+Group%22&hl=en-AU&gl=AU&ceid=AU:en' },
   { name: 'Vocus',              url: 'https://news.google.com/rss/search?q=when:24h+%22Vocus%22+Australia&hl=en-AU&gl=AU&ceid=AU:en' },
+
+  // AU energy regulator/operator — DC power supply, large-load connections,
+  // ISP updates. AEMC (rule maker) and AEMO (operator) both block bot
+  // access on their sites, so we ride on media coverage via Google News.
+  { name: 'AEMC',               url: 'https://news.google.com/rss/search?q=when:24h+(AEMC+OR+%22Australian+Energy+Market+Commission%22)+(%22data+centre%22+OR+%22data+center%22)&hl=en-AU&gl=AU&ceid=AU:en' },
+  { name: 'AEMO',               url: 'https://news.google.com/rss/search?q=when:24h+(AEMO+OR+%22Australian+Energy+Market+Operator%22)+(%22data+centre%22+OR+%22data+center%22)&hl=en-AU&gl=AU&ceid=AU:en' },
 ];
 
 // -- RSS parser (no npm) -----------------------------------------------------
@@ -125,7 +131,7 @@ ${articleList}
 - **資料取材**：要選擇對資料中心產業影響大的事件（包含：新建/擴建案、併購、技術突破、政策法規、供電/冷卻/AI算力相關、雲端服務商動態等）。盡量以上方提供的新聞素材為主；若需補充背景脈絡，可帶入你對近期產業動態的掌握，但當前卡片仍須對應到真實的新聞事件。
 - **地理分區與公司追蹤規則（嚴格遵守）**：
   - 🏗️「APAC 資料中心動態 (Top 3)」：**僅限**地理上發生在亞太地區（APAC），但**不含澳洲與紐西蘭**的資料中心產業重大事件。包含：日本、韓國、台灣、中國、香港、東南亞（新加坡、馬來西亞、印尼、泰國、越南、菲律賓等）、印度等亞太區域。
-  - 🇦🇺「澳洲資料中心動態 (Top 3)」：**僅限**地理上發生在澳洲（Australia）或紐西蘭（New Zealand）的資料中心產業重大事件。**取材來源不受限制**：只要事件地點在澳洲/紐西蘭，無論是來自 DCD、DCK、TechDay Asia、DC Post 等綜合產業媒體，或是 NEXTDC、AirTrunk、DCI Data Centers、Equinix AU、Digital Realty AU、Global Switch、Goodman Group、Macquarie Tech、Vocus 等公司專屬 feed，都應優先放入本區；重點追蹤：NEXTDC、AirTrunk、DCI Data Centers、Equinix（澳洲業務）、Digital Realty（澳洲業務）、Global Switch（澳洲業務）、Goodman Group（資料中心相關）、Macquarie Technology Group、Vocus Group 等業者；同時涵蓋主權機房、AI 算力擴建、綠色融資、ASX 公告、併購與土地/電力供應等動態。若素材不足 3 則，可結合你對近期澳洲資料中心產業動態的掌握補充，但仍須對應到真實事件；若確實完全無任何消息，則寫「本日無相關更新」。
+  - 🇦🇺「澳洲資料中心動態 (Top 3)」：**僅限**地理上發生在澳洲（Australia）或紐西蘭（New Zealand）的資料中心產業重大事件。**取材來源不受限制**：只要事件地點在澳洲/紐西蘭，無論是來自 DCD、DCK、TechDay Asia、DC Post 等綜合產業媒體，或是 NEXTDC、AirTrunk、DCI Data Centers、Equinix AU、Digital Realty AU、Global Switch、Goodman Group、Macquarie Tech、Vocus 等公司專屬 feed，都應優先放入本區；重點追蹤：NEXTDC、AirTrunk、DCI Data Centers、Equinix（澳洲業務）、Digital Realty（澳洲業務）、Global Switch（澳洲業務）、Goodman Group（資料中心相關）、Macquarie Technology Group、Vocus Group 等業者；同時涵蓋主權機房、AI 算力擴建、綠色融資、ASX 公告、併購與土地/電力供應等動態。**能源/電網層面**：AEMC（Australian Energy Market Commission，市場規則制定者）與 AEMO（Australian Energy Market Operator，電網與市場運營者）相關的大型負載（large load）併網、ISP（Integrated System Plan）、市場規則變更等，只要牽涉資料中心用電或選址，都屬於本區高優先事件。若素材不足 3 則，可結合你對近期澳洲資料中心產業動態的掌握補充，但仍須對應到真實事件；若確實完全無任何消息，則寫「本日無相關更新」。
   - 🌐「ROW 資料中心動態 (Top 3)」：**僅限**地理上發生在**非 APAC 且非澳洲/紐西蘭**地區的資料中心產業重大事件。ROW = Rest of World，包含：北美、歐洲、中東、非洲、拉丁美洲等。
   - 🔥「Bytedance / TikTok 資料中心動態 (Top 3)」：**僅限**與 ByteDance、TikTok、抖音這家公司相關的資料中心重大消息（不限地區，只看是否與該公司有關）。從上方素材中挑出相關新聞；若素材不足 3 則，可結合你對近期 ByteDance 資料中心動態的掌握補充，但仍須對應到真實事件。如果確實完全無相關消息，則寫「本日無相關更新」。
   - APAC、澳洲、ROW 三區的分區判斷標準是事件的**地理發生地點**；同一事件只能出現在其中一區，不得重複。Bytedance / TikTok 的判斷標準是**是否與該公司相關**，不限地區，可與地理區並列。

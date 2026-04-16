@@ -15,12 +15,12 @@ industry trends through quality journalism, not social media noise.
 A structured industry briefing with regional breakdown:
 
 - **Top 3 APAC events** — Japan, Korea, Taiwan, China/HK, SE Asia, India (excludes Australia/NZ)
-- **Top 3 Australia events** — AU/NZ data center market, tracking NEXTDC, AirTrunk, DCI, Equinix AU, Digital Realty AU, Global Switch, Goodman Group, Macquarie Technology Group, Vocus
+- **Top 3 Australia events** — AU/NZ data center market, tracking NEXTDC, AirTrunk, DCI, Equinix AU, Digital Realty AU, Global Switch, Goodman Group, Macquarie Technology Group, Vocus + AEMC/AEMO (DC power & grid signals)
 - **Top 3 ROW events** — North America, Europe, Middle East, Africa, Latin America (excludes APAC and Australia)
 - **Bytedance / TikTok tracker** — dedicated section for ByteDance DC activity
 - **Industry trend summary** — key trends with 3 event-linked observations
 
-Sources: DCD, Data Center Knowledge, TechDay Asia, DC Post, plus 9 Australia-focused company trackers (Google News AU RSS)
+Sources: DCD, Data Center Knowledge, TechDay Asia, DC Post, plus 11 Australia-focused trackers (9 company feeds + AEMC + AEMO, all via Google News AU RSS)
 
 ### 2. Geopolitical Briefing (8am Sydney / 22:00 UTC)
 
@@ -175,6 +175,12 @@ The LLM prompts are defined directly in the scripts:
 [Goodman Group](https://www.goodman.com/news-and-insights/media-centre) |
 [Macquarie Technology Group](https://macquarietechnologygroup.com/news/) |
 [Vocus](https://www.vocus.com.au/about/news)
+
+### Data Center Energy / Grid (AU — 2 feeds, via Google News AU RSS with DC keyword filter)
+[AEMC](https://www.aemc.gov.au/) — Australian Energy Market Commission (rule maker) |
+[AEMO](https://www.aemo.com.au/) — Australian Energy Market Operator (grid & capacity)
+
+Both bodies block direct site scraping, so these feeds ride on media coverage; the query filter (`"data centre" OR "data center"`) keeps signal focused on DC-relevant rule changes, large-load connections, and ISP updates.
 
 ### Geopolitical News (15 feeds)
 General: Reuters World, BBC World, Al Jazeera, Financial Times, SCMP, WSJ, Bloomberg, Nikkei Asia
