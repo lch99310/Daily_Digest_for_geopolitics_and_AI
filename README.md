@@ -75,8 +75,8 @@ Go to your repo **Settings → Secrets and variables → Actions** and add:
 
 Or you can directly join following Telegram channels for latest daily digest updates.
 
-- **Daily Digest for Data Center:** [@daily_datacenter_digest_bot](https://t.me/+aTaIB7hMwDgyMTg1)
-- **Daily Digest for geopolitics:** [@Daily_geopo_briefing_CH_bot](https://t.me/+hA_68lN-PchkODFl)
+- **Daily Digest for Data Center:** [Daily_DataCenter_Digest](https://t.me/+aTaIB7hMwDgyMTg1)
+- **Daily Digest for geopolitics:** [Daily_Geopolitics_Digest](https://t.me/+hA_68lN-PchkODFl)
 
 ### 3. Run It
 
